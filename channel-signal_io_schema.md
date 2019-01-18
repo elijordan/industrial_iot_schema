@@ -124,7 +124,7 @@ channels: # "device channel" as opposed to an "asset signal"
       down_sample : "${MIN|MAX|AVG|ACT}" # Minimum in window, Maximum in window, running average in window, or actual value (assume report rate = sample rate)
       report_on_change : "${true|false}" # optional - default false (always report on start-up)
       timeout : "${timeout_period_time_in_ms}" # optional - used by application to provide timeout indication, typically several times expected report rate
-  ######### Example channel config 3 ############
+  ######### Example channel config 3 - Output / Control  ############
   ${device_channel_id3}: # unique channel identifier
     display_name: "Control output channel readable channel name" 
     description: "One-liner description (optional)"
@@ -205,7 +205,7 @@ channels: # "device channel" as opposed to an "asset signal"
         "timeout": 300000
       }
     },
-    "002": {
+    "003": {
       "display_name": "Pump Control",
       "description": "Remote pump on/off control",
       "properties": {
@@ -228,19 +228,17 @@ channels: # "device channel" as opposed to an "asset signal"
 **Notes:**
 1. Report on change assumes that the report rate is still used and observed (e.g. 10 minutes) but if report on change is set to true, then it will send on any changes outside the typical 10 minute report rate
 2. Report on change is by default false
-3. Channel IDs must be unique in the device context.  (the RCM context for globally unique will be: “product ID” + “device id” + “channel id”
-4. Channel IDs can be any valid string.  At this time, if RCM generates a channel ID from the UI it will be in the form of a UUID.
-
-More Examples can be found below
+3. Channel IDs must be unique in the device context.  (the ExoSense context for globally unique will be: “product ID” + “device id” + “channel id”
+4. Channel IDs can be any valid string.  At this time, when using the ExoSense UI, it generates a channel ID in the form of '###', for example "001".  Keeping IDs small keep data packets small, especially important for cellular network use.
 
 
 ## Device Data Transport Schema
 Having a common shared channel configuration (a contract essentially) between the device and the cloud/application allows us to keep the actual data sent between devices and the cloud to a minimum - focusing only on the sending of values for channels rather than unnecessary configuration information that rarely changes.  
 
-### Device to Cloud / Application
-The resource used for writing channel values from devices to the cloud/application is “data_in”, as mentioned in the resource section.
+### Device to Cloud / Application Input (Monitoring)
+The resource used for writing channel values from devices to the cloud/application is “data_in”, as mentioned in the resource section.  Channels are by default input (sent from the device) unless the specific `"output"` property is set to `true`. 
 
-There are 3 different scenarios of how we might want to send data - each one should build on the other, and they are:
+There are 3 different scenarios of how we might want to send data from the device - each one should build on the other, and they are:
 
 **Single Data Value**
 
@@ -266,8 +264,8 @@ This payload assumes each datapoint is to be recorded in the time series databas
 
 Utilize the Record API from Murano, and apply the array of signals to each timestamps data. 
 
-### Cloud / Application to Device (control)
-The resource used for the cloud/application to send data such as control values is “data_out”, as mentioned in the resource section.
+### Cloud / Application to Device Output (Control)
+The resource used for the cloud/application to send data to devices such as control values is “data_out”, as mentioned in the resource section.  Channels must use the `"output"` property set to `true`. 
 
 The format of data packets for control type messates (cloud to device) is the same. Devices are expected to make read requests (polling) for latest data_out packets.  For MQTT, this is by use of subscriptions (MQTT) and for HTTP by way of long polling.  
 
@@ -282,7 +280,7 @@ The format of data packets for control type messates (cloud to device) is the sa
 This is a very simple signal_id = value approach, but encoded in JSON.
 
 ```
-{ "${device_channel_id1}" : "${current_channel_value}" }
+{ "${device_control_channel_id1}" : "${current_control_channel_value}" }
 ```
 
 
@@ -297,7 +295,7 @@ This requires that the clock be synced on the gateway to the global network time
 ### Channel Error Handling
 *Special Considerations for Errors*
 
-When an error occurs for a signal, the payload will change by adding the protected keyword property `__error` to the JSON root object like so:
+When an error occurs for a channel, the `data_in` payload will change by adding the protected keyword property `__error` to the JSON root object like so:
 
 ```json
 {
