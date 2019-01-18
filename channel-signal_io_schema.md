@@ -35,7 +35,7 @@ Resource Name|ExoSense Status|Who Can Write To|Description
 --|--|--|---
 data_in|supported|Device|Used to send data from device to cloud in the format defined in Section 4
 config_io|supported|Device / App|Used to share the complete configuration for a channels in the product.  This should be a 2-way synchronization meaning in the case of a self-configuring gateway, this would be written to by the gateway.  In a gateway that requires manual configuration from the application, this would be read by the gateway and cached locally.
-data_out|*planned*|App|To be defined in the future - used for writing commands to devices
+data_out|supported|App|Used to send data from the cloud application to the device in format defined in Section 4.
 config_oem|*reserved*|tbd|Settings for product names, and limits that constrain/override communications or collections of data per the manufacturers/OEMs requirements
 config_applications|*reserved*|tbd|This will configure how each fieldbus or gateway control app behaves, and what is required to configure each channel that will utilize this application. (i.e. “interface = serial port 1”)
 config_interfaces|*reserved*|tbd|This will configure how each fieldbus or gateway control app behaves, and what is required to configure each channel that will utilize this application. (i.e. “interface = serial port 1”)  
@@ -44,11 +44,12 @@ config_network|*reserved*|tbd|Initial Concepts in Appendix, but not implemented
 
 
 ## Device / Gateway Channel Configuration Schema
-This section defines the Channel Configuration object (sometimes called a device or gateway template).  This is the 'contract' for each individual device as to what channels of data it will be sending. The idea is data used by ExoSense flows as 'Channels' to and from devices.  These device channel sources can then be mapped as sources to Asset signals in the ExoSense application.
+This section defines the Channel Configuration object (sometimes called a device or gateway template).  This is the 'contract' for each individual device as to what channels of data it will be sending and/or receiving. The idea is data used by ExoSense flows as 'Channels' to and from devices.  These device channel sources can then be mapped to Asset signals in the ExoSense application.
 
 A gateway or device will require some level of configuration in order to do several things:
 
 1.  Know what information to read off of a fieldbus or IO
+  * *This can use provided 'protocol_config' information or be hardcoded into the device firmware*
 2.  Translate that information from machine-readable and terse input to Murano, back into contextual and human readable data ready to be taken into ExoSense - i.e. a signal object
 3.  Provides a consistent way for standardizing interfaces so that analytic apps downstream are able to consume this common data type.
 
@@ -123,6 +124,20 @@ channels: # "device channel" as opposed to an "asset signal"
       down_sample : "${MIN|MAX|AVG|ACT}" # Minimum in window, Maximum in window, running average in window, or actual value (assume report rate = sample rate)
       report_on_change : "${true|false}" # optional - default false (always report on start-up)
       timeout : "${timeout_period_time_in_ms}" # optional - used by application to provide timeout indication, typically several times expected report rate
+  ######### Example channel config 3 ############
+  ${device_channel_id3}: # unique channel identifier
+    display_name: "Control output channel readable channel name" 
+    description: "One-liner description (optional)"
+    properties:
+      output: true # defines this channel as a data_out control channel (default is false if not provided)
+      data_type: "${defined_type_name}", # taken from dictionary of types
+      primitive_type: "${defined_primitive_type_name}" # Optional, See "types" section - e.g. "NUMERIC"
+    protocol_config" : 
+      application : "${fieldbus_logger_application_id}" # e.g. "Modbus_TCP"
+      interface : "${path_to_interface}" # e.g. "/dev/eth0"
+      app_specific_config :  # See section X for specific application configuration parameters
+        ${app_specific_config_item1}" : "${config_item1_value}"
+        ${app_specific_config_item2}" : "${config_item2_value}"
 ```
 **Example config_io (JSON format)**
 ```json
@@ -189,6 +204,23 @@ channels: # "device channel" as opposed to an "asset signal"
         "report_on_change": false,
         "timeout": 300000
       }
+    },
+    "002": {
+      "display_name": "Pump Control",
+      "description": "Remote pump on/off control",
+      "properties": {
+        "output": true,
+        "data_type": "NUMBER",
+        "primitive_type": "NUMERIC",
+        "precision": 0,
+      },
+      "protocol_config": {
+        "application": "Modbus_RTU",
+        "interface": "/dev/tty0/",
+        "app_specific_config": {
+          
+        },
+      }
     }
   }
 }
@@ -205,9 +237,8 @@ More Examples can be found below
 ## Device Data Transport Schema
 Having a common shared channel configuration (a contract essentially) between the device and the cloud/application allows us to keep the actual data sent between devices and the cloud to a minimum - focusing only on the sending of values for channels rather than unnecessary configuration information that rarely changes.  
 
+### Device to Cloud / Application
 The resource used for writing channel values from devices to the cloud/application is “data_in”, as mentioned in the resource section.
-
-> _Note: A future consideration moving beyond “monitoring” to control - we would add a second resource in Murano called “data_out” when the cloud UI writes a value to the gateway to change an actuator value._
 
 There are 3 different scenarios of how we might want to send data - each one should build on the other, and they are:
 
@@ -235,10 +266,31 @@ This payload assumes each datapoint is to be recorded in the time series databas
 
 Utilize the Record API from Murano, and apply the array of signals to each timestamps data. 
 
-[Murano Device Record API - HTTP](http://docs.exosite.com/reference/products/device-api/http/#record)
+### Cloud / Application to Device (control)
+The resource used for the cloud/application to send data such as control values is “data_out”, as mentioned in the resource section.
+
+The format of data packets for control type messates (cloud to device) is the same. Devices are expected to make read requests (polling) for latest data_out packets.  For MQTT, this is by use of subscriptions (MQTT) and for HTTP by way of long polling.  
+
+*TODO Questions for data_out*
+
+*1. What happens if a device is offline for a few hours and misses several data_out messages, what happens when it comes back online?*
+
+*2. Is data_out a state of all output signals?* 
+
+**Single Data Value**
+
+This is a very simple signal_id = value approach, but encoded in JSON.
+
+```
+{ "${device_channel_id1}" : "${current_channel_value}" }
+```
+
+
+### Device IoT API Protocols
 
 [Murano Device Record API - MQTT](http://docs.exosite.com/reference/products/device-api/mqtt/#report-data-to-historical-timestamps) 
 
+[Murano Device Record API - HTTP](http://docs.exosite.com/reference/products/device-api/http/#record)
 
 This requires that the clock be synced on the gateway to the global network time via ntp which is used by our servers in our cluster. Our recommendation will be that the ntp server syncs with the gateway at least once every time the power is cycled on the gateway, and once per 12-24 hours of continuous operation time.
 
